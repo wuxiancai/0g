@@ -13,9 +13,10 @@ wget https://golang.org/dl/go1.22.4.linux-amd64.tar.gz
 tar -C /usr/local -xzf go1.22.4.linux-amd64.tar.gz
 sed -i '$ a export PATH=$PATH:/usr/local/go/bin' ~/.bashrc; source ~/.bashrc
 go version
+rm -rf go1.22.4.linux-amd64.tar.gz
 
 # 下载节点二进制文件
-echo "Downloading node binary..."
+echo '下载0gchaind'
 git clone -b v0.1.0 https://github.com/0glabs/0g-chain.git
 ./0g-chain/networks/testnet/install.sh
 source .profile
@@ -73,7 +74,8 @@ systemctl start 0gchaind
 
 #查看同步状态
 echo "请使用screen -S NODE,查看同步状态！"
-echo "查看命令是： journalctl -fu 0gchaind"
+echo '查看命令是： journalctl -fu 0gchaind'
+
 
 #创建钱包
 :<<EOF
