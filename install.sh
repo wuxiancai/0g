@@ -66,7 +66,7 @@ LimitNOFILE=infinity
 [Install]
 WantedBy=multi-user.target
 EOF
-
+source .profile
 #启动服务
 systemctl daemon-reload
 systemctl enable 0gchaind
@@ -92,7 +92,8 @@ read pri_key
 0gchaind keys import $pri_key
 fi
 echo "请去这个地址领水:faucet.0g.ai"
-
+source .profile
+echo '把0g地址变为eth地址命令: 0gchaind debug addr '
 :<<EOF
 # 生成新的验证者账户
 echo "请输入验证者名字："
