@@ -1,40 +1,44 @@
 #!/bin/bash
 
-# 设置变量
-NODE_DIR="$HOME/.0gchain"
-BINARY_URL="https://github.com/0glabs/0g-chain/releases/download/v0.1.0/0gchaind"
-CONFIG_URL="https://github.com/0glabs/0g-chain/releases/download/v0.1.0/config.toml"
-GENESIS_URL="https://github.com/0glabs/0g-chain/releases/download/v0.1.0/genesis.json"
-SERVICE_NAME="0gchaind.service"
-VALIDATOR_NAME="your_validator_name"  # 替换为实际的验证者名称
-CHAIN_ID="zgtendermint_16600-1"
-
 # 更新并安装依赖项
-echo "Updating system and installing dependencies..."
+echo "安装依赖。。。"
 sudo apt-get update && sudo apt-get upgrade -y
-sudo apt-get install -y curl wget jq unzip
+sudo apt-get install -y curl wget jq unzip lz4 make
 
-# 创建节点目录
-echo "Creating directory for the node..."
-mkdir -p $NODE_DIR
-cd $NODE_DIR
+#设置时间为utc
+timedatectl set-timezone UTC
+
+#安装go1.22.4
+wget https://golang.org/dl/go1.22.4.linux-amd64.tar.gz
+tar -C /usr/local -xzf go1.22.4.linux-amd64.tar.gz
+sed -i '$ a export PATH=$PATH:/usr/local/go/bin' ~/.bashrc; source ~/.bashrc
+go version
 
 # 下载节点二进制文件
 echo "Downloading node binary..."
-wget $BINARY_URL -O 0gchaind
-chmod +x 0gchaind
-sudo mv 0gchaind /usr/local/bin/
+git clone -b v0.1.0 https://github.com/0glabs/0g-chain.git
+./0g-chain/networks/testnet/install.sh
+source .profile
+0gchaind --help
+
+#Set Chain ID
+echo "Set Chain ID"
+0gchaind config chain-id zgtendermint_16600-1
+
+#初始化节点
+echo "请输入0g节点的名字："
+read nodename
+0gchaind init $nodename --chain-id zgtendermint_16600-1
+
+#删除创世文件
+rm ~/.0gchain/config/genesis.json
 
 # 下载并配置配置文件
 echo "Downloading configuration file..."
-wget $CONFIG_URL -O config.toml
-wget $GENESIS_URL -O genesis.json
-cp config.toml $NODE_DIR/config.toml
-cp genesis.json $NODE_DIR/config/genesis.json
+wget -P ~/.0gchain/config https://github.com/0glabs/0g-chain/releases/download/v0.1.0/genesis.json
 
-# 初始化节点
-echo "Initializing the node..."
-0gchaind init $VALIDATOR_NAME --chain-id $CHAIN_ID
+sed -i '/seeds =/c\seeds = "c4d619f6088cb0b24b4ab43a0510bf9251ab5d7f@54.241.167.190:26656,44d11d4ba92a01b520923f51632d2450984d5886@54.176.175.48:26656,f2693dd86766b5bf8fd6ab87e2e970d564d20aff@54.193.250.204:26656,f878d40c538c8c23653a5b70f615f8dccec6fb9f@54.215.187.94:26656"' /root/.0gchain/config/config.toml
+sed -i '/persistent_peers =/c\persistent_peers = "c4d619f6088cb0b24b4ab43a0510bf9251ab5d7f@54.241.167.190:26656,44d11d4ba92a01b520923f51632d2450984d5886@54.176.175.48:26656,f2693dd86766b5bf8fd6ab87e2e970d564d20aff@54.193.250.204:26656,f878d40c538c8c23653a5b70f615f8dccec6fb9f@54.215.187.94:26656"' /root/.0gchain/config/config.toml
 
 # 验证genesis文件
 echo "Validating genesis file..."
@@ -45,6 +49,52 @@ echo "Setting up seed nodes..."
 SEEDS="c4d619f6088cb0b24b4ab43a0510bf9251ab5d7f@54.241.167.190:26656,44d11d4ba92a01b520923f51632d2450984d5886@54.176.175.48:26656,f2693dd86766b5bf8fd6ab87e2e970d564d20aff@54.193.250.204:26656,f878d40c538c8c23653a5b70f615f8dccec6fb9f@18.166.164.232:26656"
 sed -i -e "s/^seeds *=.*/seeds = \"$SEEDS\"/" $NODE_DIR/config/config.toml
 
+#添加系统服务
+tee /etc/systemd/system/0gchaind.service > /dev/null <<EOF
+[Unit]
+Description=0G Node
+After=network.target
+
+[Service]
+User=root
+ExecStart=/root/go/bin/0gchaind start
+Restart=always
+RestartSec=3
+LimitNOFILE=infinity
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+#启动服务
+systemctl daemon-reload
+systemctl enable 0gchaind
+systemctl start 0gchaind
+
+#查看同步状态
+echo "请使用screen -S NODE,查看同步状态！"
+echo "查看命令是： journalctl -fu 0gchaind"
+
+#创建钱包
+:<<EOF
+echo "如果没有钱包，请创建钱包，如果有钱包，也可以导入钱包。"
+echo '创建钱包请输入：1，导入钱包请输入：2'
+read create
+if [ $create -eq 1 ];then
+echo "请输入钱包名称："
+read wallet
+0gchaind keys add $wallet --eth
+echo "请记录好钱包地址及助记词！"
+else
+echo "请输入钱包的密钥："
+read pri_key
+0gchaind keys import $pri_key
+fi
+echo "请去这个地址领水:faucet.0g.ai"
+EOF
+
+#创建钱包
+:<<EOF
 # 创建验证者密钥
 echo "Creating validator key..."
 0gchaind keys add $VALIDATOR_NAME --keyring-backend test --output json > validator-key.json
@@ -53,40 +103,27 @@ echo "Creating validator key..."
 VALIDATOR_ADDRESS=$(jq -r .address validator-key.json)
 
 # 生成新的验证者账户
-echo "Generating new validator account..."
+echo "请输入验证者名字："
+read validatorname
+echo "请输入钱包名称："
+
+read WALLET
 0gchaind tx staking create-validator \
   --amount=1000000ua0gi \
   --pubkey=$(0gchaind tendermint show-validator) \
-  --moniker=$VALIDATOR_NAME \
+  --moniker=$validatorname \
   --chain-id=$CHAIN_ID \
   --commission-rate="0.10" \
   --commission-max-rate="0.20" \
   --commission-max-change-rate="0.01" \
   --min-self-delegation="1" \
-  --from=$VALIDATOR_NAME \
+  --from=$WALLET \
   --gas=auto \
   --gas-adjustment=1.4 \
   --fees=5000ua0gi \
   --yes
 
-# 创建systemd服务文件
-echo "Creating systemd service file..."
-sudo bash -c "cat > /etc/systemd/system/$SERVICE_NAME" << EOL
-[Unit]
-Description=0G Validator Node
-After=network-online.target
 
-[Service]
-User=$USER
-WorkingDirectory=$NODE_DIR
-ExecStart=/usr/local/bin/0gchaind start --home $NODE_DIR
-Restart=always
-RestartSec=3
-LimitNOFILE=4096
-
-[Install]
-WantedBy=multi-user.target
-EOL
 
 # 重新加载systemd并启动服务
 echo "Reloading systemd and starting the validator node service..."
@@ -95,3 +132,4 @@ sudo systemctl enable $SERVICE_NAME
 sudo systemctl start $SERVICE_NAME
 
 echo "Validator node setup complete."
+EOF
