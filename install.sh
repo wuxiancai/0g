@@ -78,11 +78,10 @@ echo '查看命令是： journalctl -fu 0gchaind'
 
 
 #创建钱包
-:<<EOF
 echo "如果没有钱包，请创建钱包，如果有钱包，也可以导入钱包。"
 echo '创建钱包请输入：1，导入钱包请输入：2'
 read create
-if [ $create -eq 1 ];then
+if [ $create -eq "1" ];then
 echo "请输入钱包名称："
 read wallet
 0gchaind keys add $wallet --eth
@@ -93,22 +92,12 @@ read pri_key
 0gchaind keys import $pri_key
 fi
 echo "请去这个地址领水:faucet.0g.ai"
-EOF
 
-#创建钱包
 :<<EOF
-# 创建验证者密钥
-echo "Creating validator key..."
-0gchaind keys add $VALIDATOR_NAME --keyring-backend test --output json > validator-key.json
-
-# 获取验证者地址
-VALIDATOR_ADDRESS=$(jq -r .address validator-key.json)
-
 # 生成新的验证者账户
 echo "请输入验证者名字："
 read validatorname
 echo "请输入钱包名称："
-
 read WALLET
 0gchaind tx staking create-validator \
   --amount=1000000ua0gi \
@@ -124,14 +113,6 @@ read WALLET
   --gas-adjustment=1.4 \
   --fees=5000ua0gi \
   --yes
-
-
-
-# 重新加载systemd并启动服务
-echo "Reloading systemd and starting the validator node service..."
-sudo systemctl daemon-reload
-sudo systemctl enable $SERVICE_NAME
-sudo systemctl start $SERVICE_NAME
 
 echo "Validator node setup complete."
 EOF
